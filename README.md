@@ -161,7 +161,44 @@ dotnet run --project benchmarks/BitmapPuls.Benchmarks/ -c Release
 ```
 
 <!-- BENCHMARK_RESULTS_START -->
-*(ベンチマーク実行後に結果を記載)*
+環境: .NET 8.0.26, X64 RyuJIT AVX-512F+CD+BW+DQ+VL+VBMI, ShortRun(3 warmup / 3 iter)
+
+### 単体ピクセル（中央1点）
+
+| メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
+|---------|--------:|---------:|---------:|----------:|
+| GetPixel (safe) | 1.41 ns | 1.42 ns | 1.40 ns | 1.38 ns |
+| SetPixel (safe) | 1.54 ns | 1.58 ns | 1.67 ns | 1.22 ns |
+| GetPixelUnchecked | 0.23 ns | 0.21 ns | 0.08 ns | ~0 ns |
+| SetPixelUnchecked | 0.20 ns | 0.04 ns | 0.22 ns | 0.15 ns |
+
+### 行単位（1行）
+
+| メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
+|---------|--------:|---------:|---------:|----------:|
+| GetRow | 32.5 ns | 35.7 ns | 94.6 ns | 96.5 ns |
+| SetRow | 33.7 ns | 34.6 ns | 94.1 ns | 90.7 ns |
+
+### バッチランダムアクセス（256ピクセル）
+
+| メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
+|---------|--------:|---------:|---------:|----------:|
+| GetPixels (AVX2 gather) | 536 ns | 505 ns | 538 ns | 551 ns |
+| SetPixels (scalar unchecked) | 335 ns | 344 ns | 322 ns | 331 ns |
+
+> 256ピクセルあたり 約 2.1 ns/pixel (Get) / 1.3 ns/pixel (Set)
+
+### 全面操作（全ピクセル走査）
+
+| メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
+|---------|--------:|---------:|---------:|----------:|
+| Fill | 15.5 µs | 38.8 µs | 134.1 µs | 334.8 µs |
+| GetPixel_AllPixels | 369 µs | 787 µs | 1,371 µs | 2,926 µs |
+| SetPixel_AllPixels | 426 µs | 919 µs | 1,730 µs | 3,485 µs |
+| GetRow_AllRows | 15.2 µs | 39.3 µs | 111.3 µs | 273.6 µs |
+| SetRow_AllRows | 22.8 µs | 45.1 µs | 151.4 µs | 341.2 µs |
+
+> `GetRow_AllRows` vs `GetPixel_AllPixels` (1920×1080): **273 µs vs 2,926 µs → 約10.7倍高速**
 <!-- BENCHMARK_RESULTS_END -->
 
 ---
