@@ -8,6 +8,6 @@ using BitmapPuls.Benchmarks;
 AppContext.SetSwitch("System.Drawing.EnableUnixSupport", true);
 
 var config = DefaultConfig.Instance
-    .AddJob(Job.MediumRun.WithToolchain(InProcessEmitToolchain.Instance));
+    .AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
 
 BenchmarkRunner.Run<BitmapPlusBenchmarks>(config);

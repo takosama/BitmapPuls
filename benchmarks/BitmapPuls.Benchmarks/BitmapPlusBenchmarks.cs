@@ -1,15 +1,17 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using BenchmarkDotNet.Attributes;
+
 namespace BitmapPuls.Benchmarks;
 
 [MemoryDiagnoser]
+[ShortRunJob]
 public class BitmapPlusBenchmarks
 {
-    [Params(64, 512, 1920)]
+    [Params(512, 1920)]
     public int Width;
 
-    [Params(64, 512, 1080)]
+    [Params(512, 1080)]
     public int Height;
 
     private Bitmap _bitmap = null!;
