@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace BitmapPuls;
+namespace BitmapPlus;
 
 /// <summary>
 /// Grayscale conversion examples demonstrating BitmapPlus access patterns.

@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-namespace BitmapPuls;
+namespace BitmapPlus;
 
 /// <summary>
 /// Provides high-performance, safe pixel access to a 24bpp bitmap by locking
@@ -38,11 +38,11 @@ public sealed class BitmapPlus : IDisposable
     /// <summary>Gets a value indicating whether the bitmap memory is currently locked.</summary>
     public bool IsLocked => _bitmapData is not null;
 
-    /// <summary>Gets the bitmap width in pixels (available after <see cref="BeginAccess"/>).</summary>
-    public int Width => _width;
+    /// <summary>Gets the bitmap width in pixels.</summary>
+    public int Width  { get { ThrowIfDisposed(); return _bitmap.Width; } }
 
-    /// <summary>Gets the bitmap height in pixels (available after <see cref="BeginAccess"/>).</summary>
-    public int Height => _height;
+    /// <summary>Gets the bitmap height in pixels.</summary>
+    public int Height { get { ThrowIfDisposed(); return _bitmap.Height; } }
 
     /// <summary>
     /// Locks the bitmap to enable pointer-based access.
@@ -52,6 +52,8 @@ public sealed class BitmapPlus : IDisposable
     public void BeginAccess(ImageLockMode lockMode = ImageLockMode.ReadWrite)
     {
         ThrowIfDisposed();
+        if ((lockMode & ImageLockMode.UserInputBuffer) != 0)
+            throw new NotSupportedException("UserInputBuffer is not supported.");
         if (IsLocked)
             throw new InvalidOperationException("The bitmap is already locked for access.");
 
@@ -76,8 +78,9 @@ public sealed class BitmapPlus : IDisposable
         {
             _bitmap.UnlockBits(_bitmapData);
             _bitmapData = null;
-            _ptr    = 0;
-            _stride = 0;
+            _ptr      = 0;
+            _stride   = 0;
+            _lockMode = default;
         }
     }
 
@@ -91,6 +94,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureReadable();
         ValidateCoordinates(x, y);
 
         byte* p = (byte*)_ptr + (nint)y * _stride + (nint)x * 3;
@@ -151,6 +155,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureReadable();
 
         int count = xs.Length;
         if (ys.Length < count || rs.Length < count || gs.Length < count || bs.Length < count)
@@ -323,6 +328,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureReadable();
         if ((uint)y >= (uint)_height) throw new ArgumentOutOfRangeException(nameof(y));
 
         int rowBytes = _width * 3;
@@ -385,9 +391,16 @@ public sealed class BitmapPlus : IDisposable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureReadable()
+    {
+        if ((_lockMode & ImageLockMode.ReadOnly) == 0)
+            throw new InvalidOperationException("Bitmap is locked as write-only.");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureWritable()
     {
-        if (_lockMode == ImageLockMode.ReadOnly)
+        if ((_lockMode & ImageLockMode.WriteOnly) == 0)
             throw new InvalidOperationException("Bitmap is locked as read-only.");
     }
 
@@ -396,7 +409,9 @@ public sealed class BitmapPlus : IDisposable
     {
         if ((uint)x >= (uint)_width || (uint)y >= (uint)_height)
             throw new ArgumentOutOfRangeException(
-                $"Coordinates ({x}, {y}) are outside the bitmap bounds ({_width}, {_height}).");
+                paramName: x < 0 || x >= _width ? nameof(x) : nameof(y),
+                actualValue: $"({x}, {y})",
+                message: $"Coordinates ({x}, {y}) are outside the bitmap bounds ({_width}, {_height}).");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

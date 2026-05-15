@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using BenchmarkDotNet.Attributes;
 
-namespace BitmapPuls.Benchmarks;
+namespace BitmapPlus.Benchmarks;
 
 [MemoryDiagnoser]
 public class BitmapPlusBenchmarks
@@ -55,10 +55,11 @@ public class BitmapPlusBenchmarks
     }
 
     [Benchmark]
-    public void GetPixel_Center()
+    public byte GetPixel_Center()
     {
         byte r = 0, g = 0, b = 0;
         _sut.GetPixel(Width / 2, Height / 2, ref r, ref g, ref b);
+        return (byte)(r ^ g ^ b);
     }
 
     [Benchmark]
@@ -86,12 +87,14 @@ public class BitmapPlusBenchmarks
     }
 
     [Benchmark]
-    public void GetPixel_AllPixels()
+    public int GetPixel_AllPixels()
     {
+        int sum = 0;
         byte r = 0, g = 0, b = 0;
         for (int y = 0; y < Height; y++)
             for (int x = 0; x < Width; x++)
-                _sut.GetPixel(x, y, ref r, ref g, ref b);
+            { _sut.GetPixel(x, y, ref r, ref g, ref b); sum += r + g + b; }
+        return sum;
     }
 
     [Benchmark]
@@ -119,10 +122,11 @@ public class BitmapPlusBenchmarks
     // --- Unchecked single-pixel ---
 
     [Benchmark]
-    public void GetPixelUnchecked_Center()
+    public byte GetPixelUnchecked_Center()
     {
         byte r = 0, g = 0, b = 0;
         _sut.GetPixelUnchecked(Width / 2, Height / 2, ref r, ref g, ref b);
+        return (byte)(r ^ g ^ b);
     }
 
     [Benchmark]

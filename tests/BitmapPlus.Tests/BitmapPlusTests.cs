@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using Xunit;
 
-namespace BitmapPuls.Tests;
+namespace BitmapPlus.Tests;
 
 public sealed class BitmapPlusTests : IDisposable
 {
@@ -285,8 +285,34 @@ public sealed class BitmapPlusTests : IDisposable
     }
 
     [Fact]
+    public void GetPixel_Throws_WhenLockedWriteOnly()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess(ImageLockMode.WriteOnly);
+        byte r = 0, g = 0, b = 0;
+        Assert.Throws<InvalidOperationException>(() => sut.GetPixel(0, 0, ref r, ref g, ref b));
+    }
+
+    [Fact]
+    public void BeginAccess_Throws_ForUserInputBuffer()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        Assert.Throws<NotSupportedException>(
+            () => sut.BeginAccess(ImageLockMode.ReadWrite | ImageLockMode.UserInputBuffer));
+    }
+
+    [Fact]
+    public void Width_Height_AvailableBeforeBeginAccess()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        Assert.Equal(4, sut.Width);
+        Assert.Equal(4, sut.Height);
+    }
+
+    [Fact]
     public void GetPixels_GatherBlock_ContainingLastPixel_DoesNotThrow()
     {
+        if (!System.Runtime.Intrinsics.X86.Avx2.IsSupported) return;
         // 8 要素ブロックに最終ピクセル (3,3) を含めて AVX2 gather 経路に入らせる。
         // stride==width*3 なら overread 危険ピクセルがブロック内にあるが、
         // ブロック単位スカラー fallback で安全に処理されることを確認する。

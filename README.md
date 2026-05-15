@@ -1,9 +1,17 @@
-# BitmapPuls
+# BitmapPlus
 
 `System.Drawing.Bitmap` の 24bpp ピクセルに対して、`LockBits` + ポインタ演算 + AVX2 SIMD を組み合わせた高速アクセスを提供する C# ライブラリです。
 
-> **動作環境**: Windows（`System.Drawing.Common` は .NET 6 以降の Linux/macOS では公式サポート外）。  
-> Linux でビルド・テストする場合は `libgdiplus` と `System.Drawing.Common` 6.x が必要です。
+---
+
+## 対応範囲
+
+| 項目 | 内容 |
+|------|------|
+| 対応 PixelFormat | `Format24bppRgb` のみ |
+| 想定 OS | Windows（`System.Drawing.Common` は .NET 7 以降 Windows 専用） |
+| 所有権 | `BitmapPlus` は渡された `Bitmap` を `Dispose` しない |
+| スレッドセーフ | 非対応（同一インスタンスへの同時アクセス不可） |
 
 ---
 
@@ -37,7 +45,7 @@ BitmapPuls.sln
 ```csharp
 using System.Drawing;
 using System.Drawing.Imaging;
-using BitmapPuls;
+using BitmapPlus;
 
 // 1. ビットマップを用意（Format24bppRgb のみ対応）
 using var bitmap = new Bitmap(1920, 1080, PixelFormat.Format24bppRgb);
