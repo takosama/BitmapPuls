@@ -182,6 +182,90 @@ public sealed class BitmapPlus : IDisposable
         }
     }
 
+    /// <summary>
+    /// Reads a row of pixels into <paramref name="bgrBuffer"/> using AVX2 Vector256 loads where available.
+    /// The buffer receives raw BGR bytes: index <c>x*3</c>=B, <c>x*3+1</c>=G, <c>x*3+2</c>=R.
+    /// </summary>
+    /// <param name="y">The row index.</param>
+    /// <param name="bgrBuffer">Destination buffer; must hold at least <c>Width * 3</c> bytes.</param>
+    public unsafe void GetRow(int y, Span<byte> bgrBuffer)
+    {
+        ThrowIfDisposed();
+        EnsureLocked();
+        if ((uint)y >= (uint)_bitmap.Height)
+            throw new ArgumentOutOfRangeException(nameof(y));
+
+        int rowBytes = _bitmap.Width * 3;
+        if (bgrBuffer.Length < rowBytes)
+            throw new ArgumentException($"Buffer must hold at least {rowBytes} bytes.", nameof(bgrBuffer));
+
+        byte* src = (byte*)_scan0 + (y * _stride);
+
+        if (Avx2.IsSupported)
+        {
+            fixed (byte* dst = bgrBuffer)
+            {
+                int i = 0;
+                while (i + 32 <= rowBytes)
+                {
+                    Avx2.Store(dst + i, Unsafe.ReadUnaligned<Vector256<byte>>(src + i));
+                    i += 32;
+                }
+                while (i < rowBytes)
+                {
+                    dst[i] = src[i];
+                    i++;
+                }
+            }
+        }
+        else
+        {
+            new Span<byte>(src, rowBytes).CopyTo(bgrBuffer);
+        }
+    }
+
+    /// <summary>
+    /// Writes a row of pixels from <paramref name="bgrBuffer"/> using AVX2 Vector256 stores where available.
+    /// The buffer must supply raw BGR bytes: index <c>x*3</c>=B, <c>x*3+1</c>=G, <c>x*3+2</c>=R.
+    /// </summary>
+    /// <param name="y">The row index.</param>
+    /// <param name="bgrBuffer">Source buffer; must hold at least <c>Width * 3</c> bytes.</param>
+    public unsafe void SetRow(int y, ReadOnlySpan<byte> bgrBuffer)
+    {
+        ThrowIfDisposed();
+        EnsureLocked();
+        if ((uint)y >= (uint)_bitmap.Height)
+            throw new ArgumentOutOfRangeException(nameof(y));
+
+        int rowBytes = _bitmap.Width * 3;
+        if (bgrBuffer.Length < rowBytes)
+            throw new ArgumentException($"Buffer must hold at least {rowBytes} bytes.", nameof(bgrBuffer));
+
+        byte* dst = (byte*)_scan0 + (y * _stride);
+
+        if (Avx2.IsSupported)
+        {
+            fixed (byte* src = bgrBuffer)
+            {
+                int i = 0;
+                while (i + 32 <= rowBytes)
+                {
+                    Avx2.Store(dst + i, Unsafe.ReadUnaligned<Vector256<byte>>(src + i));
+                    i += 32;
+                }
+                while (i < rowBytes)
+                {
+                    dst[i] = src[i];
+                    i++;
+                }
+            }
+        }
+        else
+        {
+            bgrBuffer[..rowBytes].CopyTo(new Span<byte>(dst, rowBytes));
+        }
+    }
+
     private void EnsureLocked()
     {
         if (!IsLocked)

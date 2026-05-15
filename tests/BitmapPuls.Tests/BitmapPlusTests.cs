@@ -106,6 +106,67 @@ public sealed class BitmapPlusTests : IDisposable
     }
 
     [Fact]
+    public void SetRow_GetRow_RoundTrip()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        // BGR layout: [B, G, R] per pixel
+        byte[] written = new byte[4 * 3];
+        for (int x = 0; x < 4; x++)
+        {
+            written[x * 3]     = (byte)(x * 10);
+            written[x * 3 + 1] = (byte)(x * 10 + 1);
+            written[x * 3 + 2] = (byte)(x * 10 + 2);
+        }
+
+        sut.SetRow(2, written);
+
+        byte[] read = new byte[4 * 3];
+        sut.GetRow(2, read);
+
+        Assert.Equal(written, read);
+    }
+
+    [Fact]
+    public void SetRow_GetRow_DoNotAffectOtherRows()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        byte[] row = new byte[4 * 3];
+        Array.Fill(row, (byte)0xFF);
+        sut.SetRow(1, row);
+
+        byte[] otherRow = new byte[4 * 3];
+        sut.GetRow(0, otherRow);
+
+        Assert.All(otherRow, b => Assert.Equal(0, b));
+    }
+
+    [Fact]
+    public void GetRow_Throws_ForOutOfRangeY()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        byte[] buf = new byte[4 * 3];
+        Assert.Throws<ArgumentOutOfRangeException>(() => sut.GetRow(-1, buf));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sut.GetRow(4, buf));
+    }
+
+    [Fact]
+    public void SetRow_Throws_ForOutOfRangeY()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        byte[] buf = new byte[4 * 3];
+        Assert.Throws<ArgumentOutOfRangeException>(() => sut.SetRow(-1, buf));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sut.SetRow(4, buf));
+    }
+
+    [Fact]
     public void Fill_SetsAllPixelsToGivenColor()
     {
         using var sut = new BitmapPlus(_bitmap);
