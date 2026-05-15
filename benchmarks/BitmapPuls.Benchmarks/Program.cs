@@ -7,7 +7,7 @@ using BitmapPuls.Benchmarks;
 // Must be set before any System.Drawing type is loaded (enables libgdiplus on Linux)
 AppContext.SetSwitch("System.Drawing.EnableUnixSupport", true);
 
-var config = DefaultConfig.Instance
+var config = ManualConfig.Create(DefaultConfig.Instance)
     .AddJob(Job.ShortRun.WithToolchain(InProcessEmitToolchain.Instance));
 
 BenchmarkRunner.Run<BitmapPlusBenchmarks>(config);
