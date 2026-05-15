@@ -144,4 +144,30 @@ public class BitmapPlusBenchmarks
     {
         _sut.SetPixels(_batchXs, _batchYs, _batchRs, _batchGs, _batchBs);
     }
+
+    // --- Grayscale conversion ---
+
+    [Benchmark]
+    public void Grayscale_Safe()
+    {
+        Grayscale.ConvertSafe(_sut);
+    }
+
+    [Benchmark]
+    public void Grayscale_Unchecked()
+    {
+        Grayscale.ConvertUnchecked(_sut);
+    }
+
+    [Benchmark]
+    public void Grayscale_ViaRows()
+    {
+        Grayscale.ConvertViaRows(_sut);
+    }
+
+    [Benchmark]
+    public void Grayscale_Avx2()
+    {
+        Grayscale.ConvertAvx2(_sut);
+    }
 }

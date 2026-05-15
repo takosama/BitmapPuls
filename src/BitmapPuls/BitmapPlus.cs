@@ -37,6 +37,12 @@ public sealed class BitmapPlus : IDisposable
     /// <summary>Gets a value indicating whether the bitmap memory is currently locked.</summary>
     public bool IsLocked => _bitmapData is not null;
 
+    /// <summary>Gets the bitmap width in pixels (available after <see cref="BeginAccess"/>).</summary>
+    public int Width => _width;
+
+    /// <summary>Gets the bitmap height in pixels (available after <see cref="BeginAccess"/>).</summary>
+    public int Height => _height;
+
     /// <summary>
     /// Locks the bitmap to enable pointer-based access.
     /// </summary>
