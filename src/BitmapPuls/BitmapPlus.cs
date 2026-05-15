@@ -13,10 +13,10 @@ namespace BitmapPuls;
 /// </summary>
 public sealed class BitmapPlus : IDisposable
 {
+    private static readonly Vector256<int> s_vthree = Vector256.Create(3);
+
     private readonly Bitmap _bitmap;
     private BitmapData? _bitmapData;
-    // Cached as nint (native int) so the JIT keeps it in a register and avoids
-    // repeated IntPtr->byte* casts on every pixel operation.
     private nint _ptr;
     private nint _stride;
     private int _width;
@@ -182,7 +182,6 @@ public sealed class BitmapPlus : IDisposable
             if (Avx2.IsSupported && safeGatherCount >= 8)
             {
                 var vstride = Vector256.Create((int)_stride);
-                var vthree  = Vector256.Create(3);
                 int* buf    = stackalloc int[8];
 
                 for (; i + 8 <= safeGatherCount; i += 8)
@@ -192,7 +191,7 @@ public sealed class BitmapPlus : IDisposable
 
                     var offsets = Avx2.Add(
                         Avx2.MultiplyLow(yvec, vstride),
-                        Avx2.MultiplyLow(xvec, vthree));
+                        Avx2.MultiplyLow(xvec, s_vthree));
 
                     var gathered = Avx2.GatherVector256((int*)_ptr, offsets, 1);
 
@@ -315,22 +314,10 @@ public sealed class BitmapPlus : IDisposable
         byte* src = (byte*)_ptr + (nint)y * _stride;
 
         if (Avx2.IsSupported)
-        {
             fixed (byte* dst = bgrBuffer)
-            {
-                int i = 0;
-                while (i + 32 <= rowBytes)
-                {
-                    Avx2.Store(dst + i, Unsafe.ReadUnaligned<Vector256<byte>>(src + i));
-                    i += 32;
-                }
-                while (i < rowBytes) { dst[i] = src[i]; i++; }
-            }
-        }
+                CopyRowAvx2(src, dst, rowBytes);
         else
-        {
             new Span<byte>(src, rowBytes).CopyTo(bgrBuffer);
-        }
     }
 
     /// <summary>
@@ -350,27 +337,26 @@ public sealed class BitmapPlus : IDisposable
         byte* dst = (byte*)_ptr + (nint)y * _stride;
 
         if (Avx2.IsSupported)
-        {
             fixed (byte* src = bgrBuffer)
-            {
-                int i = 0;
-                while (i + 32 <= rowBytes)
-                {
-                    Avx2.Store(dst + i, Unsafe.ReadUnaligned<Vector256<byte>>(src + i));
-                    i += 32;
-                }
-                while (i < rowBytes) { dst[i] = src[i]; i++; }
-            }
-        }
+                CopyRowAvx2(src, dst, rowBytes);
         else
-        {
             bgrBuffer[..rowBytes].CopyTo(new Span<byte>(dst, rowBytes));
-        }
     }
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private static unsafe void CopyRowAvx2(byte* src, byte* dst, int rowBytes)
+    {
+        int i = 0;
+        while (i + 32 <= rowBytes)
+        {
+            Avx2.Store(dst + i, Unsafe.ReadUnaligned<Vector256<byte>>(src + i));
+            i += 32;
+        }
+        while (i < rowBytes) { dst[i] = src[i]; i++; }
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void EnsureLocked()

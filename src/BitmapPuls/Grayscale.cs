@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
@@ -12,6 +13,19 @@ namespace BitmapPuls;
 public static class Grayscale
 {
     private const int CR = 77, CG = 150, CB = 29;
+
+    // Deinterleave masks: extract positions 0,3,6,9 (B), 1,4,7,10 (G), 2,5,8,11 (R)
+    // from a 16-byte load covering 4 BGR pixels (12 bytes) + up to 4 garbage bytes.
+    private static readonly Vector128<byte> s_bShuf   = Vector128.Create((byte)0, 3, 6, 9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
+    private static readonly Vector128<byte> s_gShuf   = Vector128.Create((byte)1, 4, 7, 10, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
+    private static readonly Vector128<byte> s_rShuf   = Vector128.Create((byte)2, 5, 8, 11, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
+    // Write-back mask: gray[k] → bytes k*3, k*3+1, k*3+2; last 4 bytes zeroed.
+    // Bytes 0-11 of gray8 = [g0,g1,g2,g3, g0,g1,g2,g3, ...]
+    // outShuf reads: g0→pos0,1,2  g1→pos3,4,5  g2→pos6,7,8  g3→pos9,10,11
+    private static readonly Vector128<byte> s_outShuf = Vector128.Create((byte)0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 0x80, 0x80, 0x80, 0x80);
+    private static readonly Vector128<ushort> s_vcB   = Vector128.Create((ushort)CB);
+    private static readonly Vector128<ushort> s_vcG   = Vector128.Create((ushort)CG);
+    private static readonly Vector128<ushort> s_vcR   = Vector128.Create((ushort)CR);
 
     // -------------------------------------------------------------------------
     // 1. Safe single-pixel API — simplest, slowest (bounds + lock check per pixel)
@@ -55,16 +69,23 @@ public static class Grayscale
     public static void ConvertViaRows(BitmapPlus bp)
     {
         int w = bp.Width, h = bp.Height;
-        byte[] buf = new byte[w * 3];
-        for (int y = 0; y < h; y++)
+        byte[] buf = ArrayPool<byte>.Shared.Rent(w * 3);
+        try
         {
-            bp.GetRow(y, buf);
-            for (int i = 0; i < w * 3; i += 3)
+            for (int y = 0; y < h; y++)
             {
-                byte gray = (byte)((CB * buf[i] + CG * buf[i + 1] + CR * buf[i + 2]) >> 8);
-                buf[i] = buf[i + 1] = buf[i + 2] = gray;
+                bp.GetRow(y, buf.AsSpan(0, w * 3));
+                for (int i = 0; i < w * 3; i += 3)
+                {
+                    byte gray = (byte)((CB * buf[i] + CG * buf[i + 1] + CR * buf[i + 2]) >> 8);
+                    buf[i] = buf[i + 1] = buf[i + 2] = gray;
+                }
+                bp.SetRow(y, buf.AsSpan(0, w * 3));
             }
-            bp.SetRow(y, buf);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
         }
     }
 
@@ -88,13 +109,20 @@ public static class Grayscale
         int w = bp.Width, h = bp.Height;
         // 16-byte read slack: last iteration reads from (w-4)*3, needs 16 bytes,
         // so needs up to (w-4)*3+15 = w*3+3 bytes — allocate with headroom.
-        byte[] buf = new byte[w * 3 + 16];
-        for (int y = 0; y < h; y++)
+        byte[] buf = ArrayPool<byte>.Shared.Rent(w * 3 + 16);
+        try
         {
-            bp.GetRow(y, buf.AsSpan(0, w * 3));
-            fixed (byte* p = buf)
-                ProcessRow(p, w);
-            bp.SetRow(y, buf.AsSpan(0, w * 3));
+            for (int y = 0; y < h; y++)
+            {
+                bp.GetRow(y, buf.AsSpan(0, w * 3));
+                fixed (byte* p = buf)
+                    ProcessRow(p, w);
+                bp.SetRow(y, buf.AsSpan(0, w * 3));
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
         }
     }
 
@@ -105,52 +133,31 @@ public static class Grayscale
 
         if (Ssse3.IsSupported && Sse41.IsSupported)
         {
-            // Deinterleave masks: extract positions 0,3,6,9 (B), 1,4,7,10 (G), 2,5,8,11 (R)
-            // from a 16-byte load covering 4 BGR pixels (12 bytes) + up to 4 garbage bytes.
-            var bShuf = Vector128.Create((byte)0, 3, 6, 9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
-            var gShuf = Vector128.Create((byte)1, 4, 7, 10, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
-            var rShuf = Vector128.Create((byte)2, 5, 8, 11, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80);
-
-            // Write-back mask: gray[k] → bytes k*3, k*3+1, k*3+2; last 4 bytes zeroed.
-            // Bytes 0-11 of gray8 = [g0,g1,g2,g3, g0,g1,g2,g3, ...]
-            // outShuf reads: g0→pos0,1,2  g1→pos3,4,5  g2→pos6,7,8  g3→pos9,10,11
-            var outShuf = Vector128.Create((byte)0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 0x80, 0x80, 0x80, 0x80);
-
-            var vcB = Vector128.Create((ushort)CB);
-            var vcG = Vector128.Create((ushort)CG);
-            var vcR = Vector128.Create((ushort)CR);
-
             for (; i + 4 <= width; i += 4)
             {
                 // Load 16 bytes (only first 12 are valid pixels; slack in buf absorbs the rest).
                 var pix = Unsafe.ReadUnaligned<Vector128<byte>>(row + i * 3);
 
-                // Extract channels; pmovzxbw zero-extends the 4 extracted bytes to uint16.
-                var b16 = Sse41.ConvertToVector128Int16(Ssse3.Shuffle(pix, bShuf)).AsUInt16();
-                var g16 = Sse41.ConvertToVector128Int16(Ssse3.Shuffle(pix, gShuf)).AsUInt16();
-                var r16 = Sse41.ConvertToVector128Int16(Ssse3.Shuffle(pix, rShuf)).AsUInt16();
+                var b16 = Sse41.ConvertToVector128Int16(Ssse3.Shuffle(pix, s_bShuf)).AsUInt16();
+                var g16 = Sse41.ConvertToVector128Int16(Ssse3.Shuffle(pix, s_gShuf)).AsUInt16();
+                var r16 = Sse41.ConvertToVector128Int16(Ssse3.Shuffle(pix, s_rShuf)).AsUInt16();
 
-                // gray[k] = (CB*B[k] + CG*G[k] + CR*R[k]) >> 8
                 var gray16 = Sse2.ShiftRightLogical(
                     Sse2.Add(Sse2.Add(
-                        Sse2.MultiplyLow(b16, vcB),
-                        Sse2.MultiplyLow(g16, vcG)),
-                        Sse2.MultiplyLow(r16, vcR)), 8);
+                        Sse2.MultiplyLow(b16, s_vcB),
+                        Sse2.MultiplyLow(g16, s_vcG)),
+                        Sse2.MultiplyLow(r16, s_vcR)), 8);
 
-                // packuswb: [g0,g1,g2,g3, g0,g1,g2,g3, ...]  (passed twice → same halves)
+                // packuswb needs two inputs; passing gray16 twice duplicates it into both halves.
                 var gray8 = Sse2.PackUnsignedSaturate(gray16.AsInt16(), gray16.AsInt16());
+                var out12 = Ssse3.Shuffle(gray8, s_outShuf);
 
-                // Replicate each gray byte to BGR triple → 12 valid + 4 zero bytes.
-                var out12 = Ssse3.Shuffle(gray8, outShuf);
-
-                // Write exactly 12 bytes: one 8-byte store + one 4-byte store.
-                // Using GetElement avoids a 16-byte write that would corrupt pixel i+4.
+                // GetElement avoids a 16-byte write that would corrupt pixel i+4.
                 Unsafe.WriteUnaligned(row + i * 3,     out12.AsUInt64().GetElement(0));
                 Unsafe.WriteUnaligned(row + i * 3 + 8, out12.AsUInt32().GetElement(2));
             }
         }
 
-        // Scalar tail (also full fallback when SSSE3/SSE4.1 unavailable)
         for (; i < width; i++)
         {
             byte* p = row + i * 3;
