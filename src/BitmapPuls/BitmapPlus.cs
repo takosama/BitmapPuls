@@ -1,6 +1,9 @@
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace BitmapPuls;
 
@@ -19,6 +22,12 @@ public sealed class BitmapPlus : IDisposable
     public BitmapPlus(Bitmap bitmap)
     {
         _bitmap = bitmap ?? throw new ArgumentNullException(nameof(bitmap));
+        if (_bitmap.PixelFormat != PixelFormat.Format24bppRgb)
+        {
+            throw new ArgumentException(
+                $"Bitmap must use Format24bppRgb, but got {_bitmap.PixelFormat}.",
+                nameof(bitmap));
+        }
     }
 
     /// <summary>
@@ -45,7 +54,7 @@ public sealed class BitmapPlus : IDisposable
             lockMode,
             PixelFormat.Format24bppRgb);
         _scan0 = _bitmapData.Scan0;
-        _stride = _bitmapData.Stride;
+        _stride = Math.Abs(_bitmapData.Stride);
     }
 
     /// <summary>
@@ -106,6 +115,73 @@ public sealed class BitmapPlus : IDisposable
         pixelPtr[2] = r;
     }
 
+    /// <summary>
+    /// Fills the entire bitmap with the specified color.
+    /// Uses AVX2 Vector256 SIMD writes when hardware support is available.
+    /// </summary>
+    /// <param name="r">The red component.</param>
+    /// <param name="g">The green component.</param>
+    /// <param name="b">The blue component.</param>
+    public unsafe void Fill(byte r, byte g, byte b)
+    {
+        ThrowIfDisposed();
+        EnsureLocked();
+
+        int width = _bitmap.Width;
+        int height = _bitmap.Height;
+        byte* basePtr = (byte*)_scan0;
+        int rowBytes = width * 3;
+
+        if (Avx2.IsSupported && rowBytes >= 96)
+        {
+            // 96 bytes = LCM(3, 32): covers 32 complete BGR pixels with no pattern shift between stores
+            byte* pattern = stackalloc byte[96];
+            for (int i = 0; i < 96; i++)
+            {
+                pattern[i] = (i % 3) switch { 0 => b, 1 => g, _ => r };
+            }
+
+            Vector256<byte> v0 = Unsafe.ReadUnaligned<Vector256<byte>>(pattern);
+            Vector256<byte> v1 = Unsafe.ReadUnaligned<Vector256<byte>>(pattern + 32);
+            Vector256<byte> v2 = Unsafe.ReadUnaligned<Vector256<byte>>(pattern + 64);
+
+            for (int y = 0; y < height; y++)
+            {
+                byte* row = basePtr + (y * _stride);
+                int i = 0;
+
+                while (i + 96 <= rowBytes)
+                {
+                    Avx2.Store(row + i,      v0);
+                    Avx2.Store(row + i + 32, v1);
+                    Avx2.Store(row + i + 64, v2);
+                    i += 96;
+                }
+
+                while (i < rowBytes)
+                {
+                    row[i]     = b;
+                    row[i + 1] = g;
+                    row[i + 2] = r;
+                    i += 3;
+                }
+            }
+        }
+        else
+        {
+            for (int y = 0; y < height; y++)
+            {
+                byte* row = basePtr + (y * _stride);
+                for (int x = 0; x < width; x++)
+                {
+                    row[x * 3]     = b;
+                    row[x * 3 + 1] = g;
+                    row[x * 3 + 2] = r;
+                }
+            }
+        }
+    }
+
     private void EnsureLocked()
     {
         if (!IsLocked)
@@ -139,5 +215,6 @@ public sealed class BitmapPlus : IDisposable
 
         EndAccess();
         _disposed = true;
+        GC.SuppressFinalize(this);
     }
 }
