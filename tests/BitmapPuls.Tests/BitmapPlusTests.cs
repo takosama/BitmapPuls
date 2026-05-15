@@ -186,6 +186,45 @@ public sealed class BitmapPlusTests : IDisposable
         }
     }
 
+    [Fact]
+    public void GetPixelUnchecked_ReturnsValuesWrittenBySetPixelUnchecked()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+        sut.SetPixelUnchecked(1, 2, 11, 22, 33);
+
+        byte r = 0, g = 0, b = 0;
+        sut.GetPixelUnchecked(1, 2, ref r, ref g, ref b);
+
+        Assert.Equal(11, r);
+        Assert.Equal(22, g);
+        Assert.Equal(33, b);
+    }
+
+    [Fact]
+    public void GetPixels_ReturnsValuesWrittenBySetPixels()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        int[] xs  = new[] { 0, 1, 2, 3, 0, 1, 2, 3, 0 };
+        int[] ys  = new[] { 0, 0, 0, 0, 1, 1, 1, 1, 2 };
+        byte[] wrs = new byte[] { 10, 20, 30, 40, 50, 60, 70, 80, 90 };
+        byte[] wgs = new byte[] { 11, 21, 31, 41, 51, 61, 71, 81, 91 };
+        byte[] wbs = new byte[] { 12, 22, 32, 42, 52, 62, 72, 82, 92 };
+
+        sut.SetPixels(xs, ys, wrs, wgs, wbs);
+
+        byte[] rs = new byte[xs.Length];
+        byte[] gs = new byte[xs.Length];
+        byte[] bs = new byte[xs.Length];
+        sut.GetPixels(xs, ys, rs, gs, bs);
+
+        Assert.Equal(wrs, rs);
+        Assert.Equal(wgs, gs);
+        Assert.Equal(wbs, bs);
+    }
+
     public void Dispose()
     {
         _bitmap.Dispose();
