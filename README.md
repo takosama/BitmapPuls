@@ -163,6 +163,21 @@ dotnet run --project benchmarks/BitmapPuls.Benchmarks/ -c Release
 <!-- BENCHMARK_RESULTS_START -->
 環境: .NET 8.0.26, X64 RyuJIT AVX-512F+CD+BW+DQ+VL+VBMI, ShortRun(3 warmup / 3 iter)
 
+### Grayscale 変換（全ピクセル）
+
+| メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
+|---------|--------:|---------:|---------:|----------:|
+| `ConvertSafe` (GetPixel/SetPixel) | 532 µs | 1,092 µs | 1,980 µs | 4,135 µs |
+| `ConvertUnchecked` | 404 µs | 893 µs | 1,542 µs | 3,223 µs |
+| `ConvertViaRows` (行バッファ+スカラー) | 367 µs | 932 µs | 1,662 µs | 3,463 µs |
+| `ConvertSimd` (SSSE3+SSE4.1) | **125 µs** | **316 µs** | **566 µs** | **1,305 µs** |
+
+> SIMD 版は Safe 版の約 **3.2×** 高速 (1920×1080)。  
+> ViaRows と Unchecked がほぼ同速なのはメモリ帯域がボトルネックのため。
+
+
+環境: .NET 8.0.26, X64 RyuJIT AVX-512F+CD+BW+DQ+VL+VBMI, ShortRun(3 warmup / 3 iter)
+
 ### 単体ピクセル（中央1点）
 
 | メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
