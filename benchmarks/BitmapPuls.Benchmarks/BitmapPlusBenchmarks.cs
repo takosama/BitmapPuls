@@ -1,20 +1,25 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using BenchmarkDotNet.Attributes;
+
 namespace BitmapPuls.Benchmarks;
 
 [MemoryDiagnoser]
+[ShortRunJob]
 public class BitmapPlusBenchmarks
 {
-    [Params(64, 512, 1920)]
+    [Params(512, 1920)]
     public int Width;
 
-    [Params(64, 512, 1080)]
+    [Params(512, 1080)]
     public int Height;
 
     private Bitmap _bitmap = null!;
     private BitmapPlus _sut = null!;
     private byte[] _rowBuffer = null!;
+    private int[] _batchXs = null!;
+    private int[] _batchYs = null!;
+    private byte[] _batchRs = null!, _batchGs = null!, _batchBs = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -23,6 +28,23 @@ public class BitmapPlusBenchmarks
         _sut = new BitmapPlus(_bitmap);
         _sut.BeginAccess();
         _rowBuffer = new byte[Width * 3];
+
+        // 256 random pixel coordinates for batch benchmarks
+        var rng = new Random(42);
+        const int N = 256;
+        _batchXs = new int[N];
+        _batchYs = new int[N];
+        _batchRs = new byte[N];
+        _batchGs = new byte[N];
+        _batchBs = new byte[N];
+        for (int i = 0; i < N; i++)
+        {
+            _batchXs[i] = rng.Next(Width);
+            _batchYs[i] = rng.Next(Height);
+            _batchRs[i] = (byte)rng.Next(256);
+            _batchGs[i] = (byte)rng.Next(256);
+            _batchBs[i] = (byte)rng.Next(256);
+        }
     }
 
     [GlobalCleanup]
@@ -93,5 +115,34 @@ public class BitmapPlusBenchmarks
     {
         for (int y = 0; y < Height; y++)
             _sut.SetRow(y, _rowBuffer);
+    }
+
+    // --- Unchecked single-pixel ---
+
+    [Benchmark]
+    public void GetPixelUnchecked_Center()
+    {
+        byte r = 0, g = 0, b = 0;
+        _sut.GetPixelUnchecked(Width / 2, Height / 2, ref r, ref g, ref b);
+    }
+
+    [Benchmark]
+    public void SetPixelUnchecked_Center()
+    {
+        _sut.SetPixelUnchecked(Width / 2, Height / 2, 128, 64, 32);
+    }
+
+    // --- Batch random access (256 random coordinates) ---
+
+    [Benchmark]
+    public void GetPixels_256Random()
+    {
+        _sut.GetPixels(_batchXs, _batchYs, _batchRs, _batchGs, _batchBs);
+    }
+
+    [Benchmark]
+    public void SetPixels_256Random()
+    {
+        _sut.SetPixels(_batchXs, _batchYs, _batchRs, _batchGs, _batchBs);
     }
 }
