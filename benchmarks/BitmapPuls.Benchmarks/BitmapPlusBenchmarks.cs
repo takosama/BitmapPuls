@@ -166,8 +166,8 @@ public class BitmapPlusBenchmarks
     }
 
     [Benchmark]
-    public void Grayscale_Avx2()
+    public void Grayscale_Simd()
     {
-        Grayscale.ConvertAvx2(_sut);
+        Grayscale.ConvertSimd(_sut);
     }
 }

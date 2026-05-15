@@ -59,8 +59,10 @@ public sealed class BitmapPlus : IDisposable
             lockMode,
             PixelFormat.Format24bppRgb);
 
-        _ptr    = _bitmapData.Scan0;               // store base pointer as nint
-        _stride = Math.Abs(_bitmapData.Stride);    // always positive
+        _ptr    = _bitmapData.Scan0;
+        // Keep the signed stride. GDI+ sets Scan0 so that Scan0 + y*Stride
+        // always yields visual row y, even for bottom-up DIBs (negative Stride).
+        _stride = _bitmapData.Stride;
         _width  = _bitmap.Width;
         _height = _bitmap.Height;
     }
@@ -151,29 +153,47 @@ public sealed class BitmapPlus : IDisposable
         if (ys.Length < count || rs.Length < count || gs.Length < count || bs.Length < count)
             throw new ArgumentException("All spans must have at least xs.Length elements.");
 
+        for (int k = 0; k < count; k++)
+            ValidateCoordinates(xs[k], ys[k]);
+
+        // GatherVector256 reads 4 bytes per pixel to extract BGR.
+        // When stride == width*3 (no row padding, positive stride only), the 4th byte
+        // of the very last bitmap pixel (width-1, height-1) falls outside the locked
+        // region. Find the first such element and limit the gather range to exclude it.
+        int safeGatherCount = count;
+        if (_stride > 0 && _stride == (nint)(_width * 3))
+        {
+            int lastX = _width - 1, lastY = _height - 1;
+            for (int k = 0; k < count; k++)
+            {
+                if (xs[k] == lastX && ys[k] == lastY)
+                {
+                    safeGatherCount = k;
+                    break;
+                }
+            }
+        }
+
         fixed (int* pxs = xs, pys = ys)
         fixed (byte* prs = rs, pgs = gs, pbs = bs)
         {
             int i = 0;
 
-            if (Avx2.IsSupported && count >= 8)
+            if (Avx2.IsSupported && safeGatherCount >= 8)
             {
                 var vstride = Vector256.Create((int)_stride);
                 var vthree  = Vector256.Create(3);
                 int* buf    = stackalloc int[8];
 
-                for (; i + 8 <= count; i += 8)
+                for (; i + 8 <= safeGatherCount; i += 8)
                 {
                     var xvec = Avx.LoadVector256(pxs + i);
                     var yvec = Avx.LoadVector256(pys + i);
 
-                    // offset[k] = y[k]*stride + x[k]*3  (byte offset into locked bitmap)
                     var offsets = Avx2.Add(
                         Avx2.MultiplyLow(yvec, vstride),
                         Avx2.MultiplyLow(xvec, vthree));
 
-                    // Load 4 bytes at each offset simultaneously (last byte may be next-pixel's B,
-                    // but GDI+ row padding guarantees no out-of-bounds read).
                     var gathered = Avx2.GatherVector256((int*)_ptr, offsets, 1);
 
                     Avx.Store(buf, gathered);
@@ -187,7 +207,7 @@ public sealed class BitmapPlus : IDisposable
                 }
             }
 
-            // Scalar tail (also used when AVX2 is unavailable)
+            // Scalar tail — also handles elements excluded from gather for safety.
             for (; i < count; i++)
             {
                 byte* p = (byte*)_ptr + (nint)pys[i] * _stride + (nint)pxs[i] * 3;
@@ -211,6 +231,9 @@ public sealed class BitmapPlus : IDisposable
         int count = xs.Length;
         if (ys.Length < count || rs.Length < count || gs.Length < count || bs.Length < count)
             throw new ArgumentException("All spans must have at least xs.Length elements.");
+
+        for (int k = 0; k < count; k++)
+            ValidateCoordinates(xs[k], ys[k]);
 
         fixed (int* pxs = xs, pys = ys)
         fixed (byte* prs = rs, pgs = gs, pbs = bs)

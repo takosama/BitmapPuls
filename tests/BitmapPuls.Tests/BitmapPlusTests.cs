@@ -225,6 +225,57 @@ public sealed class BitmapPlusTests : IDisposable
         Assert.Equal(wbs, bs);
     }
 
+    [Fact]
+    public void GetPixels_LastBitmapPixel_DoesNotThrow()
+    {
+        // Verifies no out-of-bounds read on the very last pixel (no row padding: 4*3=12 bytes, stride=12).
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+        sut.SetPixel(3, 3, 200, 100, 50);
+
+        int[] xs = new[] { 3 };
+        int[] ys = new[] { 3 };
+        byte[] rs = new byte[1], gs = new byte[1], bs = new byte[1];
+        sut.GetPixels(xs, ys, rs, gs, bs);
+
+        Assert.Equal(200, rs[0]);
+        Assert.Equal(100, gs[0]);
+        Assert.Equal(50,  bs[0]);
+    }
+
+    [Fact]
+    public void GetPixels_Throws_ForOutOfRangeCoordinates()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        int[] xs = new[] { 4 };
+        int[] ys = new[] { 0 };
+        byte[] rs = new byte[1], gs = new byte[1], bs = new byte[1];
+        Assert.Throws<ArgumentOutOfRangeException>(() => sut.GetPixels(xs, ys, rs, gs, bs));
+    }
+
+    [Fact]
+    public void SetPixels_Throws_ForOutOfRangeCoordinates()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+
+        int[] xs = new[] { 0 };
+        int[] ys = new[] { 4 };
+        byte[] rs = new byte[1], gs = new byte[1], bs = new byte[1];
+        Assert.Throws<ArgumentOutOfRangeException>(() => sut.SetPixels(xs, ys, rs, gs, bs));
+    }
+
+    [Fact]
+    public void Width_Height_ReturnCorrectValues()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+        Assert.Equal(4, sut.Width);
+        Assert.Equal(4, sut.Height);
+    }
+
     public void Dispose()
     {
         _bitmap.Dispose();
