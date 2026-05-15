@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitmapPuls", "src/BitmapPul
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitmapPuls.Tests", "tests/BitmapPuls.Tests/BitmapPuls.Tests.csproj", "{9DB18A6C-988A-4121-84B7-F3F24D71E179}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BitmapPuls.Benchmarks", "benchmarks/BitmapPuls.Benchmarks/BitmapPuls.Benchmarks.csproj", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
         Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,10 @@ Global
         {9DB18A6C-988A-4121-84B7-F3F24D71E179}.Debug|Any CPU.Build.0 = Debug|Any CPU
         {9DB18A6C-988A-4121-84B7-F3F24D71E179}.Release|Any CPU.ActiveCfg = Release|Any CPU
         {9DB18A6C-988A-4121-84B7-F3F24D71E179}.Release|Any CPU.Build.0 = Release|Any CPU
+        {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.ActiveCfg = Release|Any CPU
+        {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Debug|Any CPU.Build.0 = Release|Any CPU
+        {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}.Release|Any CPU.Build.0 = Release|Any CPU
     EndGlobalSection
     GlobalSection(SolutionProperties) = preSolution
         HideSolutionNode = FALSE
