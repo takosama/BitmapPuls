@@ -175,53 +175,50 @@ dotnet run --project benchmarks/BitmapPuls.Benchmarks/ -c Release
 
 | メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
 |---------|--------:|---------:|---------:|----------:|
-| `ConvertSafe` (GetPixel/SetPixel) | 532 µs | 1,092 µs | 1,980 µs | 4,135 µs |
-| `ConvertUnchecked` | 404 µs | 893 µs | 1,542 µs | 3,223 µs |
-| `ConvertViaRows` (行バッファ+スカラー) | 367 µs | 932 µs | 1,662 µs | 3,463 µs |
-| `ConvertSimd` (SSSE3+SSE4.1) | **125 µs** | **316 µs** | **566 µs** | **1,305 µs** |
+| `ConvertSafe` (GetPixel/SetPixel) | 632 µs | 1,353 µs | 2,326 µs | 5,026 µs |
+| `ConvertUnchecked` | 465 µs | 982 µs | 1,768 µs | 3,637 µs |
+| `ConvertViaRows` (行バッファ+スカラー) | 426 µs | 952 µs | 1,649 µs | 3,521 µs |
+| `ConvertSimd` (SSSE3+SSE4.1) | **155 µs** | **343 µs** | **643 µs** | **1,380 µs** |
 
-> SIMD 版は Safe 版の約 **3.2×** 高速 (1920×1080)。  
+> SIMD 版は Safe 版の約 **3.6×** 高速 (1920×1080)。  
 > ViaRows と Unchecked がほぼ同速なのはメモリ帯域がボトルネックのため。
-
-
-環境: .NET 8.0.26, X64 RyuJIT AVX-512F+CD+BW+DQ+VL+VBMI, ShortRun(3 warmup / 3 iter)
 
 ### 単体ピクセル（中央1点）
 
 | メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
 |---------|--------:|---------:|---------:|----------:|
-| GetPixel (safe) | 1.41 ns | 1.42 ns | 1.40 ns | 1.38 ns |
-| SetPixel (safe) | 1.54 ns | 1.58 ns | 1.67 ns | 1.22 ns |
-| GetPixelUnchecked | 0.23 ns | 0.21 ns | 0.08 ns | ~0 ns |
-| SetPixelUnchecked | 0.20 ns | 0.04 ns | 0.22 ns | 0.15 ns |
+| GetPixel (safe) | 1.33 ns | 1.30 ns | 1.33 ns | 1.33 ns |
+| SetPixel (safe) | 1.36 ns | 1.39 ns | 1.39 ns | 1.39 ns |
+| GetPixelUnchecked | 0.34 ns | 0.57 ns | 0.39 ns | 0.36 ns |
+| SetPixelUnchecked | 0.39 ns | 0.31 ns | 0.39 ns | 0.38 ns |
 
 ### 行単位（1行）
 
 | メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
 |---------|--------:|---------:|---------:|----------:|
-| GetRow | 32.5 ns | 35.7 ns | 94.6 ns | 96.5 ns |
-| SetRow | 33.7 ns | 34.6 ns | 94.1 ns | 90.7 ns |
+| GetRow | 26.2 ns | 26.3 ns | 121.2 ns | 118.6 ns |
+| SetRow | 27.8 ns | 26.6 ns | 121.3 ns | 120.2 ns |
 
 ### バッチランダムアクセス（256ピクセル）
 
 | メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
 |---------|--------:|---------:|---------:|----------:|
-| GetPixels (AVX2 gather) | 536 ns | 505 ns | 538 ns | 551 ns |
-| SetPixels (scalar unchecked) | 335 ns | 344 ns | 322 ns | 331 ns |
+| GetPixels (AVX2 gather) | 857 ns | 823 ns | 861 ns | 843 ns |
+| SetPixels (scalar unchecked) | 578 ns | 616 ns | 554 ns | 607 ns |
 
-> 256ピクセルあたり 約 2.1 ns/pixel (Get) / 1.3 ns/pixel (Set)
+> 256ピクセルあたり 約 3.3 ns/pixel (Get) / 2.3 ns/pixel (Set)
 
 ### 全面操作（全ピクセル走査）
 
 | メソッド | 512×512 | 512×1080 | 1920×512 | 1920×1080 |
 |---------|--------:|---------:|---------:|----------:|
-| Fill | 15.5 µs | 38.8 µs | 134.1 µs | 334.8 µs |
-| GetPixel_AllPixels | 369 µs | 787 µs | 1,371 µs | 2,926 µs |
-| SetPixel_AllPixels | 426 µs | 919 µs | 1,730 µs | 3,485 µs |
-| GetRow_AllRows | 15.2 µs | 39.3 µs | 111.3 µs | 273.6 µs |
-| SetRow_AllRows | 22.8 µs | 45.1 µs | 151.4 µs | 341.2 µs |
+| Fill | 24.6 µs | 42.1 µs | 151 µs | 254 µs |
+| GetPixel_AllPixels | 466 µs | 985 µs | 1,750 µs | 3,597 µs |
+| SetPixel_AllPixels | 428 µs | 942 µs | 2,136 µs | 4,497 µs |
+| GetRow_AllRows | 15.5 µs | 41.1 µs | 88.7 µs | 212 µs |
+| SetRow_AllRows | 18.3 µs | 61.4 µs | 140 µs | 307 µs |
 
-> `GetRow_AllRows` vs `GetPixel_AllPixels` (1920×1080): **273 µs vs 2,926 µs → 約10.7倍高速**
+> `GetRow_AllRows` vs `GetPixel_AllPixels` (1920×1080): **212 µs vs 3,597 µs → 約17.0倍高速**
 <!-- BENCHMARK_RESULTS_END -->
 
 ---
