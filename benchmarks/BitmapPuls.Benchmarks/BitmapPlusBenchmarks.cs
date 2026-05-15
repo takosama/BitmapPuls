@@ -5,7 +5,6 @@ using BenchmarkDotNet.Attributes;
 namespace BitmapPuls.Benchmarks;
 
 [MemoryDiagnoser]
-[ShortRunJob]
 public class BitmapPlusBenchmarks
 {
     [Params(512, 1920)]
