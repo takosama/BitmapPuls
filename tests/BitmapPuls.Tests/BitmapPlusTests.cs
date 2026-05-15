@@ -276,6 +276,32 @@ public sealed class BitmapPlusTests : IDisposable
         Assert.Equal(4, sut.Height);
     }
 
+    [Fact]
+    public void SetPixel_Throws_WhenLockedReadOnly()
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess(ImageLockMode.ReadOnly);
+        Assert.Throws<InvalidOperationException>(() => sut.SetPixel(0, 0, 0, 0, 0));
+    }
+
+    [Fact]
+    public void GetPixels_GatherBlock_ContainingLastPixel_DoesNotThrow()
+    {
+        // 8 要素ブロックに最終ピクセル (3,3) を含めて AVX2 gather 経路に入らせる。
+        // stride==width*3 なら overread 危険ピクセルがブロック内にあるが、
+        // ブロック単位スカラー fallback で安全に処理されることを確認する。
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+        sut.SetPixel(3, 3, 200, 100, 50);
+        int[] xs = { 0, 1, 2, 3, 0, 1, 2, 3 };
+        int[] ys = { 0, 0, 0, 0, 1, 1, 1, 3 };
+        byte[] rs = new byte[8], gs = new byte[8], bs = new byte[8];
+        sut.GetPixels(xs, ys, rs, gs, bs);
+        Assert.Equal(200, rs[7]);
+        Assert.Equal(100, gs[7]);
+        Assert.Equal(50,  bs[7]);
+    }
+
     public void Dispose()
     {
         _bitmap.Dispose();

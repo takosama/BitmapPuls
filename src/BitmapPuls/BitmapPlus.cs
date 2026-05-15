@@ -22,6 +22,7 @@ public sealed class BitmapPlus : IDisposable
     private int _width;
     private int _height;
     private bool _disposed;
+    private ImageLockMode _lockMode;
 
     public BitmapPlus(Bitmap bitmap)
     {
@@ -59,12 +60,13 @@ public sealed class BitmapPlus : IDisposable
             lockMode,
             PixelFormat.Format24bppRgb);
 
-        _ptr    = _bitmapData.Scan0;
+        _ptr       = _bitmapData.Scan0;
         // Keep the signed stride. GDI+ sets Scan0 so that Scan0 + y*Stride
         // always yields visual row y, even for bottom-up DIBs (negative Stride).
-        _stride = _bitmapData.Stride;
-        _width  = _bitmap.Width;
-        _height = _bitmap.Height;
+        _stride    = _bitmapData.Stride;
+        _width     = _bitmap.Width;
+        _height    = _bitmap.Height;
+        _lockMode  = lockMode;
     }
 
     /// <summary>Unlocks the bitmap if it is currently locked.</summary>
@@ -101,6 +103,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureWritable();
         ValidateCoordinates(x, y);
 
         byte* p = (byte*)_ptr + (nint)y * _stride + (nint)x * 3;
@@ -157,35 +160,48 @@ public sealed class BitmapPlus : IDisposable
             ValidateCoordinates(xs[k], ys[k]);
 
         // GatherVector256 reads 4 bytes per pixel to extract BGR.
-        // When stride == width*3 (no row padding, positive stride only), the 4th byte
-        // of the very last bitmap pixel (width-1, height-1) falls outside the locked
-        // region. Find the first such element and limit the gather range to exclude it.
-        int safeGatherCount = count;
-        if (_stride > 0 && _stride == (nint)(_width * 3))
-        {
-            int lastX = _width - 1, lastY = _height - 1;
-            for (int k = 0; k < count; k++)
-            {
-                if (xs[k] == lastX && ys[k] == lastY)
-                {
-                    safeGatherCount = k;
-                    break;
-                }
-            }
-        }
+        // When |stride| == width*3 (no row padding), the 4th byte of the last pixel in
+        // memory falls outside the locked region. For positive stride that pixel is
+        // (width-1, height-1); for negative stride it is (width-1, 0) because y=0 is
+        // the high-memory end. Check per 8-element block so only unsafe blocks fall
+        // back to scalar — safe blocks behind an unsafe one still use gather.
+        bool hasUnsafePixel = Math.Abs((int)_stride) == _width * 3;
+        int unsafeX = _width - 1;
+        int unsafeY = (_stride > 0) ? _height - 1 : 0;
 
         fixed (int* pxs = xs, pys = ys)
         fixed (byte* prs = rs, pgs = gs, pbs = bs)
         {
             int i = 0;
 
-            if (Avx2.IsSupported && safeGatherCount >= 8)
+            if (Avx2.IsSupported && count >= 8)
             {
                 var vstride = Vector256.Create((int)_stride);
                 int* buf    = stackalloc int[8];
 
-                for (; i + 8 <= safeGatherCount; i += 8)
+                for (; i + 8 <= count; )
                 {
+                    bool blockUnsafe = false;
+                    if (hasUnsafePixel)
+                    {
+                        for (int j = 0; j < 8; j++)
+                        {
+                            if (pxs[i + j] == unsafeX && pys[i + j] == unsafeY)
+                            { blockUnsafe = true; break; }
+                        }
+                    }
+
+                    if (blockUnsafe)
+                    {
+                        for (int j = 0; j < 8; j++)
+                        {
+                            byte* p = (byte*)_ptr + (nint)pys[i+j] * _stride + (nint)pxs[i+j] * 3;
+                            pbs[i+j] = p[0]; pgs[i+j] = p[1]; prs[i+j] = p[2];
+                        }
+                        i += 8;
+                        continue;
+                    }
+
                     var xvec = Avx.LoadVector256(pxs + i);
                     var yvec = Avx.LoadVector256(pys + i);
 
@@ -199,14 +215,14 @@ public sealed class BitmapPlus : IDisposable
                     for (int j = 0; j < 8; j++)
                     {
                         int px = buf[j];
-                        pbs[i + j] = (byte) px;
-                        pgs[i + j] = (byte)(px >>  8);
-                        prs[i + j] = (byte)(px >> 16);
+                        pbs[i+j] = (byte) px;
+                        pgs[i+j] = (byte)(px >>  8);
+                        prs[i+j] = (byte)(px >> 16);
                     }
+                    i += 8;
                 }
             }
 
-            // Scalar tail — also handles elements excluded from gather for safety.
             for (; i < count; i++)
             {
                 byte* p = (byte*)_ptr + (nint)pys[i] * _stride + (nint)pxs[i] * 3;
@@ -226,6 +242,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureWritable();
 
         int count = xs.Length;
         if (ys.Length < count || rs.Length < count || gs.Length < count || bs.Length < count)
@@ -257,6 +274,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureWritable();
 
         int rowBytes = _width * 3;
         byte* basePtr = (byte*)_ptr;
@@ -328,6 +346,7 @@ public sealed class BitmapPlus : IDisposable
     {
         ThrowIfDisposed();
         EnsureLocked();
+        EnsureWritable();
         if ((uint)y >= (uint)_height) throw new ArgumentOutOfRangeException(nameof(y));
 
         int rowBytes = _width * 3;
@@ -363,6 +382,13 @@ public sealed class BitmapPlus : IDisposable
     {
         if (!IsLocked)
             throw new InvalidOperationException("BeginAccess must be called before manipulating pixels.");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureWritable()
+    {
+        if (_lockMode == ImageLockMode.ReadOnly)
+            throw new InvalidOperationException("Bitmap is locked as read-only.");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

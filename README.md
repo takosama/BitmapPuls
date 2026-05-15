@@ -17,7 +17,7 @@
 | スカラーバッチ書き込み | `SetPixels` — AVX2 に scatter 命令がないためスカラー unchecked ループ |
 | AVX2 行単位コピー | `GetRow` / `SetRow` — 32 バイト単位 SIMD ロード/ストア |
 | AVX2 全面塗り潰し | `Fill` — LCM(3,32)=96 バイトパターンで BGR ずれなし |
-| 負ストライド対応 | ボトムアップ DIB の `Stride < 0` を `Math.Abs` で吸収 |
+| 負ストライド対応 | `BitmapData.Stride` の符号を保持し `Scan0 + y × Stride + x × 3` で top-down / bottom-up を同一式で扱う |
 
 ---
 
@@ -243,4 +243,4 @@ BGR は 3 バイト周期、AVX2 ストアは 32 バイト単位。LCM(3, 32) = 
 
 ### 負ストライド
 
-Windows の DIB はボトムアップ格納の場合に `Stride < 0` になる。`Math.Abs(_bitmapData.Stride)` で常に正の値を保持し、ポインタ演算を単純化している。
+`BitmapData.Stride` は符号に画像方向の情報を持つため符号付きのまま保持する。GDI+ が `Scan0` を末尾行に調整済みなので `Scan0 + y × Stride + x × 3` で視覚行 y が top-down / bottom-up のどちらでも常に正しく引ける。
