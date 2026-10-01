@@ -14,6 +14,31 @@ public sealed class BitmapPlusTests : IDisposable
         _bitmap = new Bitmap(4, 4, PixelFormat.Format24bppRgb);
     }
 
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(0, 1)]
+    [InlineData(0, 2)]
+    [InlineData(1, 0)]
+    [InlineData(1, 1)]
+    [InlineData(1, 2)]
+    public void GetPixels_RejectsOutputsOverlappingCoordinates(int coordinate, int channel)
+    {
+        using var sut = new BitmapPlus(_bitmap);
+        sut.BeginAccess();
+        sut.Fill(0, 0, 0); // Safe fixture even if the rejection regresses.
+        int[] xs = new int[2], ys = new int[2];
+        byte[] r = new byte[2], g = new byte[2], b = new byte[2];
+        Assert.Throws<ArgumentException>(() =>
+        {
+            Span<byte> alias = System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                (coordinate == 0 ? xs : ys).AsSpan()).Slice(4, 2);
+            sut.GetPixels(xs, ys, channel == 0 ? alias : r,
+                channel == 1 ? alias : g, channel == 2 ? alias : b);
+        });
+        Assert.Equal(new int[2], xs);
+        Assert.Equal(new int[2], ys);
+    }
+
     [Fact]
     public void BeginAccess_Throws_WhenAlreadyLocked()
     {
