@@ -148,6 +148,8 @@ public sealed class BitmapPlus : IDisposable
     /// Reads N pixels at arbitrary coordinates using AVX2 GatherVector256 where available.
     /// 8 memory accesses are issued in parallel per SIMD iteration, hiding random-access latency.
     /// All spans must have at least <c>xs.Length</c> elements.
+    /// Output spans must not overlap the consumed coordinate input spans.
+    /// The caller must not mutate coordinates concurrently during this operation.
     /// </summary>
     public unsafe void GetPixels(
         ReadOnlySpan<int> xs, ReadOnlySpan<int> ys,
@@ -158,8 +160,7 @@ public sealed class BitmapPlus : IDisposable
         EnsureReadable();
 
         int count = xs.Length;
-        if (ys.Length < count || rs.Length < count || gs.Length < count || bs.Length < count)
-            throw new ArgumentException("All spans must have at least xs.Length elements.");
+        PixelBufferValidation.ValidateGetPixels(xs, ys, rs, gs, bs);
 
         for (int k = 0; k < count; k++)
             ValidateCoordinates(xs[k], ys[k]);
